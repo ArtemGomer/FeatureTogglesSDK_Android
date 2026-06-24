@@ -100,6 +100,7 @@ class FeatureTogglesSdk private constructor(
         private var interceptors: List<Interceptor> = emptyList()
         private var dispatcher: Dispatcher? = null
         private var defaultValue: Boolean = false
+        private var okHttpClient: OkHttpClient? = null
 
         fun withInMemoryStorage(): Initializer = apply {
             check(this.storage == null) {
@@ -156,12 +157,22 @@ class FeatureTogglesSdk private constructor(
             this.dispatcher = dispatcher
         }
 
+        /**
+         * Позволяет передать собственный [OkHttpClient] (например, с настроенным
+         * sslSocketFactory/TrustManager или certificatePinner), который SDK будет
+         * использовать как основу — заданные через [interceptors]/[dispatcher]
+         * настройки добавляются поверх него. Если не задан, используется клиент по умолчанию.
+         */
+        fun okHttpClient(okHttpClient: OkHttpClient) = apply {
+            this.okHttpClient = okHttpClient
+        }
+
         fun initialize(): FeatureTogglesSdk =
             FeatureTogglesSdk(
                 repository = FeatureTogglesRepositoryImpl(
                     storage = checkNotNull(storage),
                     service = FeatureFlagServiceImpl(
-                        httpClient = getOkHttpClient(),
+                        httpClient = buildOkHttpClient(),
                         endpoint = "${checkNotNull(baseUrl)}${apiFeaturesPath}",
                     )
                 ),
@@ -171,8 +182,8 @@ class FeatureTogglesSdk private constructor(
                 INSTANCE = it
             }
 
-        private fun getOkHttpClient(): OkHttpClient =
-            OkHttpClient.Builder().apply {
+        private fun buildOkHttpClient(): OkHttpClient =
+            (this.okHttpClient ?: OkHttpClient.Builder().build()).newBuilder().apply {
                 this@Initializer.interceptors.forEach(this::addInterceptor)
                 this.dispatcher(this@Initializer.dispatcher ?: Dispatcher())
             }.build()
